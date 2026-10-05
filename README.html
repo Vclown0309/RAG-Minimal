@@ -62,7 +62,7 @@ img { max-width: 100%; }
 <h1 id="rag-minimal">RAG-Minimal 学习手册</h1>
 <blockquote>
 <p>面向 <strong>只有 Python 基础</strong> 的学习者：从零看懂并跑通一个手写 RAG（检索增强生成）。
-配套单文件 <code>rag_minimal.py</code>（164 行、零第三方依赖）——<strong>一份代码 + 一份手册，没有别的</strong>。</p>
+配套单文件 <code>rag_minimal.py</code>（171 行、零第三方依赖）——<strong>一份代码 + 一份手册，没有别的</strong>。</p>
 </blockquote>
 <h2 id="0">0. 开始之前：两份基础自测</h2>
 <h3 id="01-python">0.1 Python 基础</h3>
@@ -163,11 +163,11 @@ llama-server -m D:\模型路径\对话模型.gguf -ngl 999 -c 8192 --port 8080
 </tr>
 <tr>
 <td><code>-ngl 999</code></td>
-<td>把模型层全放到显卡（有 NVIDIA 独显时加；纯 CPU 电脑删掉这个参数）</td>
+<td>把模型层全放到显卡（有 NVIDIA 独显时加；纯 CPU 电脑删掉这个参数）。新版 llama.cpp 默认已全卸载，显式写是为兼容旧版</td>
 </tr>
 <tr>
 <td><code>-c 8192</code></td>
-<td>上下文窗口大小</td>
+<td>上下文窗口大小。<strong>必须带</strong>：不带时 llama.cpp 默认按模型训练上限（Qwen3 系 40960 token）× 4 slots 建 KV cache，一个 4B 服务就吃 20GB+ 内存 / 显存</td>
 </tr>
 </tbody>
 </table>
@@ -177,7 +177,7 @@ llama-server -m D:\模型路径\对话模型.gguf -ngl 999 -c 8192 --port 8080
 <li>对话：Qwen3-1.7B（约 1.1GB）或 Qwen3-4B（约 2.4GB）</li>
 </ul>
 <p><strong>原理一样，模型越小越流畅</strong> —— RAG 的骨架跟模型大小无关，别上来就用 8B / 27B 把自己卡死。</p>
-<h3 id="ppt">卡成 PPT / 内存高？看这条</h3>
+<h3 id="ppt">卡成 PPT / 内存干满？看这条（实测排过雷）</h3>
 <table>
 <thead>
 <tr>
@@ -188,17 +188,23 @@ llama-server -m D:\模型路径\对话模型.gguf -ngl 999 -c 8192 --port 8080
 </thead>
 <tbody>
 <tr>
+<td>内存 / 显存打满（4B 模型竟然吃 20GB+）</td>
+<td><strong>没带 <code>-c</code></strong>：llama.cpp 默认按模型训练上限（Qwen3 系 40960 token）× 4 slots 建 KV cache，单个 4B 服务就吃 20GB+</td>
+<td>启动命令加 <code>-c 8192</code>（KV cache 降 5 倍）</td>
+</tr>
+<tr>
 <td>提问后卡几十秒到几分钟</td>
 <td>Qwen3 系默认开"思考"：先输出一大坨英文推理才回答</td>
 <td>新版 <code>rag_minimal.py</code> 已带 <code>chat_template_kwargs: {"enable_thinking": False}</code> + <code>max_tokens: 512</code>，升级代码即可</td>
 </tr>
 <tr>
-<td>内存 / 显存高</td>
-<td>没带 <code>-ngl</code> 时模型全在 CPU 跑（慢且吃内存）；或模型太大（8B / 27B）</td>
-<td>有独显加 <code>-ngl 999</code>；没独显就用 0.6B / 1.7B 小模型</td>
+<td>没独显时内存高 / 生成慢</td>
+<td>旧版 llama.cpp 不带 <code>-ngl</code> 时默认全 CPU 跑</td>
+<td>有独显加 <code>-ngl 999</code>；没独显用 0.6B / 1.7B 小模型</td>
 </tr>
 </tbody>
 </table>
+<p><strong>实测数据（i9-14900K + RTX 4090 D 24GB，同一对 4B 模型）</strong>：不带 <code>-c</code> 双服务吃 <strong>45GB 内存</strong>；带 <code>-c 8192</code> 双服务仅 <strong>5.9GB</strong>，提问 <strong>1 秒</strong>出答案带参考源。</p>
 <p>这正好回答"原理版是不是拼硬件"：<strong>不是</strong>。原理版全程跑最小模型（0.6B + 1.7B），任何能装 Windows 的电脑都流畅；大模型是生产版（RAG_HandProj）的事。</p>
 <h2 id="1">1. 先跑起来（照做就行）</h2>
 <p>前置：一台电脑 + Python 3.10+，两个模型服务已启动（怎么启动见 0.3 节）。</p>
@@ -432,7 +438,7 @@ print(&quot;答案：&quot;, reply[&quot;choices&quot;][0][&quot;message&quot;][
 <p><strong>实验 6：空库兜底</strong>——<code>--reset</code> 后直接 <code>--ask</code>，看提示 "知识库是空的"。</p>
 <p>每个实验问自己：<strong>改一个参数，行为变了没有？变了就说明你理解了它控制什么。</strong></p>
 <h2 id="9">9. 更进一步：从原理到页面</h2>
-<p>RAG-Minimal 是<strong>原理版</strong>—— 命令行一问一答，把 RAG 的骨架摊在 164 行里给你看。它离 "能用" 还差一层，但<strong>往哪儿走、走多远，由你定</strong>。</p>
+<p>RAG-Minimal 是<strong>原理版</strong>—— 命令行一问一答，把 RAG 的骨架摊在 171 行里给你看。它离 "能用" 还差一层，但<strong>往哪儿走、走多远，由你定</strong>。</p>
 <p>这里有一份路线图（不是标准答案，是选择题）：</p>
 <table>
 <thead>
@@ -470,10 +476,10 @@ print(&quot;答案：&quot;, reply[&quot;choices&quot;][0][&quot;message&quot;][
 </tr>
 </tbody>
 </table>
-<p><strong>拓展思考题</strong>：你能把这 164 行 + 两个模型，变成 "别人下载后双击就能用" 的东西吗？—— 提示方向：压缩包（带启动脚本）、安装包（Inno Setup / NSIS）、单文件便携包、Docker 镜像、云服务器部署。</p>
+<p><strong>拓展思考题</strong>：你能把这 171 行 + 两个模型，变成 "别人下载后双击就能用" 的东西吗？—— 提示方向：压缩包（带启动脚本）、安装包（Inno Setup / NSIS）、单文件便携包、Docker 镜像、云服务器部署。</p>
 <p>想自己查资料解决，就动手；卡住了想找个人带，可以来闲鱼找作者咨询 ——<strong>陪跑带你完成打包 / 上线，也是这个项目价值的一部分</strong>。</p>
 <hr />
-<p><strong>先懂骨架，再看血肉。</strong> 能逐行解释这 164 行，你就拿到了 RAG 的通行证。</p>
+<p><strong>先懂骨架，再看血肉。</strong> 能逐行解释这 171 行，你就拿到了 RAG 的通行证。</p>
 <h2 id="license">License</h2>
 <p><strong>AGPLv3</strong> —— 允许商用，但你必须告知使用者源码可免费获取；修改或再分发（含部署为网络服务）后，修改版同样必须以 AGPLv3 开源。模型文件与文档内容版权归各自来源。</p>
 <p>全文见 <a href="LICENSE">LICENSE</a>。</p>

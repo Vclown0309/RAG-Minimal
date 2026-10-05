@@ -10,9 +10,16 @@
     generate() ↔ 6. 拼 Prompt 开卷答题（答案可追溯：带参考源）
 
 依赖：Python 3.10+（stdlib 仅用 sqlite3 / urllib / json）
-前置：两个 llama-server 已启动（见 README）：
-    embed: llama-server -m <嵌入模型> --embedding --pooling last --port 8081
-    chat : llama-server -m <对话模型> --port 8080
+前置：两个 llama-server 已启动（见 README 0.3 节）：
+    embed: llama-server -m <嵌入模型> --embedding --pooling last -c 8192 --port 8081
+    chat : llama-server -m <对话模型> -c 8192 --port 8080
+    # 两个参数是性能保险，少一个都会卡：
+    # -c 8192：限制上下文。不带它 llama.cpp 默认按模型训练上限（Qwen3 系 40960
+    #   token）× 4 slots 建 KV cache → 单个 4B 服务吃 20GB+ 内存/显存，双服务打满。
+    # -ngl 999：把模型层全放到显卡（有 NVIDIA 独显时）。新版 llama.cpp 默认已全卸载，
+    #   显式写是为了兼容旧版本（旧版默认 -ngl 0 = 全 CPU，慢一个数量级）。
+    # 另：Qwen3 系默认开"思考"，本代码已在 generate() 里关闭（enable_thinking=False）
+    #   并限制输出长度（max_tokens=512）；换非 Qwen 模型若报错，删掉该键即可。
 
 用法：
     python rag_minimal.py --build 文档.md   # 建库（可重复，幂等去重）
