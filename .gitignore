@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 运行产物（kb.db 是建库后生成，不入库）
+*.db
+
+# 渲染产物与本地工具
