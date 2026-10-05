@@ -62,7 +62,7 @@ img { max-width: 100%; }
 <h1 id="rag-minimal">RAG-Minimal 学习手册</h1>
 <blockquote>
 <p>面向 <strong>只有 Python 基础</strong> 的学习者：从零看懂并跑通一个手写 RAG（检索增强生成）。
-配套单文件 <code>rag_minimal.py</code>（156 行、零第三方依赖）——<strong>一份代码 + 一份手册，没有别的</strong>。</p>
+配套单文件 <code>rag_minimal.py</code>（164 行、零第三方依赖）——<strong>一份代码 + 一份手册，没有别的</strong>。</p>
 </blockquote>
 <h2 id="0">0. 开始之前：两份基础自测</h2>
 <h3 id="01-python">0.1 Python 基础</h3>
@@ -140,8 +140,68 @@ img { max-width: 100%; }
 <p><strong>RAG 的 "切块" 吃的是文档结构</strong></p>
 <p>—— 哪里是标题、哪里是正文、哪里是代码块，全靠 Markdown 语法来认。不懂语法就看不懂 "为什么这样切"。</p>
 </blockquote>
+<h2 id="03">0.3 模型服务：先起两个本地模型（照抄即可）</h2>
+<p>RAG 链路要两个模型：<strong>嵌入模型</strong>（把文字变向量）+ <strong>对话模型</strong>（把检索结果变成人话）。两个都是 llama.cpp 起的本地服务，一个占 8081 端口、一个占 8080 端口：</p>
+<pre><code class="language-powershell"># 终端 1：嵌入服务（8081 端口）
+llama-server -m D:\模型路径\嵌入模型.gguf --embedding --pooling last -ngl 999 -c 8192 --port 8081
+
+# 终端 2：对话服务（8080 端口）
+llama-server -m D:\模型路径\对话模型.gguf -ngl 999 -c 8192 --port 8080
+</code></pre>
+<p>参数含义：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--embedding --pooling last</code></td>
+<td>嵌入模式 + last 池化。Qwen 系嵌入模型必须带，否则向量不对</td>
+</tr>
+<tr>
+<td><code>-ngl 999</code></td>
+<td>把模型层全放到显卡（有 NVIDIA 独显时加；纯 CPU 电脑删掉这个参数）</td>
+</tr>
+<tr>
+<td><code>-c 8192</code></td>
+<td>上下文窗口大小</td>
+</tr>
+</tbody>
+</table>
+<p><strong>模型推荐（原理版不需要大模型）</strong>：</p>
+<ul>
+<li>嵌入：Qwen3-Embedding-0.6B（约 0.6GB）—— CPU 也能飞快</li>
+<li>对话：Qwen3-1.7B（约 1.1GB）或 Qwen3-4B（约 2.4GB）</li>
+</ul>
+<p><strong>原理一样，模型越小越流畅</strong> —— RAG 的骨架跟模型大小无关，别上来就用 8B / 27B 把自己卡死。</p>
+<h3 id="ppt">卡成 PPT / 内存高？看这条</h3>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>原因</th>
+<th>解决</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>提问后卡几十秒到几分钟</td>
+<td>Qwen3 系默认开"思考"：先输出一大坨英文推理才回答</td>
+<td>新版 <code>rag_minimal.py</code> 已带 <code>chat_template_kwargs: {"enable_thinking": False}</code> + <code>max_tokens: 512</code>，升级代码即可</td>
+</tr>
+<tr>
+<td>内存 / 显存高</td>
+<td>没带 <code>-ngl</code> 时模型全在 CPU 跑（慢且吃内存）；或模型太大（8B / 27B）</td>
+<td>有独显加 <code>-ngl 999</code>；没独显就用 0.6B / 1.7B 小模型</td>
+</tr>
+</tbody>
+</table>
+<p>这正好回答"原理版是不是拼硬件"：<strong>不是</strong>。原理版全程跑最小模型（0.6B + 1.7B），任何能装 Windows 的电脑都流畅；大模型是生产版（RAG_HandProj）的事。</p>
 <h2 id="1">1. 先跑起来（照做就行）</h2>
-<p>前置：一台电脑 + Python 3.10+，两个模型服务已启动（命令见本文第 8 节）。</p>
+<p>前置：一台电脑 + Python 3.10+，两个模型服务已启动（怎么启动见 0.3 节）。</p>
 <pre><code># 1. 建库：把 Markdown 文档切块 + 向量化 + 存入 SQLite
 python rag_minimal.py --build 你的笔记.md
 
@@ -352,10 +412,16 @@ return scored[:k]                        # 取前 k 个（k=3）
 <p>检索到 top-3 块后，把它们拼进提问，明确指令 "根据以下资料回答，不能编造"：</p>
 <pre><code>prompt = &quot;\n&quot;.join(f&quot;资料{i+1}：{c}&quot; for i, (c, _) in enumerate(hits))
 prompt += f&quot;\n问题：{query}\n请仅依据以上资料回答，不要编造资料外的内容。&quot;
-reply = _post(CHAT_URL, {&quot;model&quot;: &quot;x&quot;, &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: prompt}]})
+reply = _post(CHAT_URL, {
+    &quot;model&quot;: &quot;x&quot;,
+    &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: prompt}],
+    &quot;max_tokens&quot;: 512,                                  # 限总输出长度，防无限生成
+    &quot;chat_template_kwargs&quot;: {&quot;enable_thinking&quot;: False}, # Qwen3 系默认开思考，关掉才答得快
+})
 print(&quot;答案：&quot;, reply[&quot;choices&quot;][0][&quot;message&quot;][&quot;content&quot;])
 </code></pre>
 <p><code>f"资料{i+1}：{c}"</code> 是 <strong>f-string</strong>：<code>{变量}</code> 会把变量值塞进字符串。<code>enumerate(hits)</code> 给列表元素带编号（<code>(0, 第1块), (1, 第2块)...</code>），所以 <code>i+1</code> 从 1 开始编号资料。</p>
+<p>多出来的两个参数是性能保险：Qwen3 系默认会先输出一大坨英文"思考"再回答（慢且吃内存），<code>enable_thinking: False</code> 直接关掉；<code>max_tokens: 512</code> 限制总输出长度，模型就算想无限生成也到不了 —— 这两行是"原理版也能跑得动"的关键（详见 0.3 节）。</p>
 <p>这一步把 "找到" 变成 "说人话"：模型基于你给的资料作答，资料里没有的它会诚实说不知道 ——<strong>回答可追溯，错了能查到是哪块资料的问题</strong>（所以 <code>generate</code> 会打印参考源和相似度）。</p>
 <h2 id="8">8. 六个动手实验（改参数看行为变化）</h2>
 <p><strong>实验 1：切块重叠</strong>—— 把 <code>WINDOW</code> 改成 500、步长 500（<code>range(0, len(text), 500)</code>，无重叠），问 "一句话被切成两半" 的内容，看检索是否变差。<strong>体会：重叠是给固定窗口切补语义的。</strong></p>
@@ -366,7 +432,7 @@ print(&quot;答案：&quot;, reply[&quot;choices&quot;][0][&quot;message&quot;][
 <p><strong>实验 6：空库兜底</strong>——<code>--reset</code> 后直接 <code>--ask</code>，看提示 "知识库是空的"。</p>
 <p>每个实验问自己：<strong>改一个参数，行为变了没有？变了就说明你理解了它控制什么。</strong></p>
 <h2 id="9">9. 更进一步：从原理到页面</h2>
-<p>RAG-Minimal 是<strong>原理版</strong>—— 命令行一问一答，把 RAG 的骨架摊在 156 行里给你看。它离 "能用" 还差一层，但<strong>往哪儿走、走多远，由你定</strong>。</p>
+<p>RAG-Minimal 是<strong>原理版</strong>—— 命令行一问一答，把 RAG 的骨架摊在 164 行里给你看。它离 "能用" 还差一层，但<strong>往哪儿走、走多远，由你定</strong>。</p>
 <p>这里有一份路线图（不是标准答案，是选择题）：</p>
 <table>
 <thead>
@@ -404,10 +470,10 @@ print(&quot;答案：&quot;, reply[&quot;choices&quot;][0][&quot;message&quot;][
 </tr>
 </tbody>
 </table>
-<p><strong>拓展思考题</strong>：你能把这 156 行 + 两个模型，变成 "别人下载后双击就能用" 的东西吗？—— 提示方向：压缩包（带启动脚本）、安装包（Inno Setup / NSIS）、单文件便携包、Docker 镜像、云服务器部署。</p>
+<p><strong>拓展思考题</strong>：你能把这 164 行 + 两个模型，变成 "别人下载后双击就能用" 的东西吗？—— 提示方向：压缩包（带启动脚本）、安装包（Inno Setup / NSIS）、单文件便携包、Docker 镜像、云服务器部署。</p>
 <p>想自己查资料解决，就动手；卡住了想找个人带，可以来闲鱼找作者咨询 ——<strong>陪跑带你完成打包 / 上线，也是这个项目价值的一部分</strong>。</p>
 <hr />
-<p><strong>先懂骨架，再看血肉。</strong> 能逐行解释这 156 行，你就拿到了 RAG 的通行证。</p>
+<p><strong>先懂骨架，再看血肉。</strong> 能逐行解释这 164 行，你就拿到了 RAG 的通行证。</p>
 <h2 id="license">License</h2>
 <p><strong>AGPLv3</strong> —— 允许商用，但你必须告知使用者源码可免费获取；修改或再分发（含部署为网络服务）后，修改版同样必须以 AGPLv3 开源。模型文件与文档内容版权归各自来源。</p>
 <p>全文见 <a href="LICENSE">LICENSE</a>。</p>

@@ -40,7 +40,7 @@ def _post(url: str, payload: dict) -> dict:
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=120) as resp:
         return json.loads(resp.read())
 
 
@@ -127,7 +127,15 @@ def generate(query: str) -> None:
         return
     prompt = "\n".join(f"资料{i+1}：{c}" for i, (c, _) in enumerate(hits))
     prompt += f"\n问题：{query}\n请仅依据以上资料回答，不要编造资料外的内容。"
-    reply = _post(CHAT_URL, {"model": "x", "messages": [{"role": "user", "content": prompt}]})
+    # Qwen3/Qwen3.5 系默认开"思考"：不关掉会先输出几百上千 token 的英文推理，
+    # 慢（CPU 上几十秒起步）且吃内存。max_tokens 限总输出长度，防模型无限生成。
+    # 换非 Qwen 模型时若报 chat_template_kwargs 错，删掉该键即可。
+    reply = _post(CHAT_URL, {
+        "model": "x",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 512,
+        "chat_template_kwargs": {"enable_thinking": False},
+    })
     print("答案：", reply["choices"][0]["message"]["content"])
     print("-" * 40)
     for i, (content, score) in enumerate(hits, 1):
