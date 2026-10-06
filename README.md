@@ -6,7 +6,7 @@
 ## 视频教程 & 免折腾下载
 
 - **视频教程（B 站）**：[RAG-Minimal 原理版使用教程](https://www.bilibili.com/video/BV1SVHZ6NEDT/)
-- **不想折腾环境？** 带网页的完整版（FastAPI + 演示页 + 多格式文档解析）在 [RAG_HandProj（Gitee）](https://gitee.com/Mini_Coder/rag_handproj) · [GitHub 镜像](https://github.com/Vclown0309/RAG_HandProj)：整合包（CPU / CUDA / Online 三版，模型内置或自动下载，解压双击 `start.bat` 即用）→ **百度网盘**（永久有效）：https://pan.baidu.com/s/59PrnR8lAbw0h0AbsHok08w
+- **不想折腾环境？** 带网页的完整版（FastAPI + 演示页 + 多格式文档解析）在 [RAG_HandProj（Gitee）](https://gitee.com/Mini_Coder/rag_handproj) · [GitHub 镜像](https://github.com/Vclown0309/RAG_HandProj)：整合包（CPU / CUDA / Online 三版，模型内置或自动下载，解压双击 `start.bat` 即用）→ **百度网盘**（永久有效）：https://pan.baidu.com/s/59PrnR8lAbw0h0AbsHok08w；Online 版也可走 [GitHub Release](https://github.com/Vclown0309/RAG_HandProj/releases) 直接下载
 
 ## 0. 开始之前：两份基础自测
 
