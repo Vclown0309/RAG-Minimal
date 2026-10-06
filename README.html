@@ -64,6 +64,11 @@ img { max-width: 100%; }
 <p>面向 <strong>只有 Python 基础</strong> 的学习者：从零看懂并跑通一个手写 RAG（检索增强生成）。
 配套单文件 <code>rag_minimal.py</code>（171 行、零第三方依赖）——<strong>一份代码 + 一份手册，没有别的</strong>。</p>
 </blockquote>
+<h2 id="_1">视频教程 &amp; 免折腾下载</h2>
+<ul>
+<li><strong>视频教程（B 站）</strong>：<a href="https://www.bilibili.com/video/BV1SVHZ6NEDT/">RAG-Minimal 原理版使用教程</a></li>
+<li><strong>不想折腾环境？</strong> 带网页的完整版（FastAPI + 演示页 + 多格式文档解析）在 <a href="https://github.com/Vclown0309/RAG_HandProj">RAG_HandProj</a>：整合包（CPU / CUDA / Online 三版，模型内置或自动下载，解压双击 <code>start.bat</code> 即用）→ <strong>百度网盘</strong>（永久有效）：https://pan.baidu.com/s/59PrnR8lAbw0h0AbsHok08w</li>
+</ul>
 <h2 id="0">0. 开始之前：两份基础自测</h2>
 <h3 id="01-python">0.1 Python 基础</h3>
 <p>本手册默认你会这些（都是 Python 入门就会的）：</p>
@@ -234,7 +239,7 @@ elif args.ask:      # --ask &quot;问题&quot;：提问
 </code></pre>
 <p>注意 <code>--build</code> 那一行是个<strong>函数套函数</strong>：<code>chunk(...)</code> 先把文本切成块，<code>store(...)</code> 再把块存进库 ——<strong>先切块，再入库</strong>，这就是 RAG 建库的两步。往下每一节拆一个函数。</p>
 <h2 id="3-chunk">3. 第一步：切块（chunk）</h2>
-<h3 id="_1">为什么切</h3>
+<h3 id="_2">为什么切</h3>
 <p>模型的 "眼睛"（上下文窗口）一次只能看有限文字，整本书塞不进去。所以先把文档切成小块，提问时只挑相关的几块喂给它。<strong>切块是检索质量的第一道闸门</strong>—— 块切得好不好，直接决定后面能不能检索到。</p>
 <h3 id="vs">切法分两类：固定窗口 vs 非固定</h3>
 <p><strong>固定窗口切</strong>：不管内容，每 500 字一刀。实现最简单，但刀可能砍在句子中间，把一句完整的话劈成两半 ——<strong>语义断裂</strong>。</p>
@@ -267,9 +272,9 @@ elif args.ask:      # --ask &quot;问题&quot;：提问
 </tbody>
 </table>
 <p><strong>目的只有一个：向量化之前，语义信息和上下文不断裂。</strong> 断了的块，向量也是残缺的，检索就会漏。</p>
-<h3 id="_2">本工程为什么用标题切</h3>
+<h3 id="_3">本工程为什么用标题切</h3>
 <p>本工程文档都经 anydoc 转成了带结构的 Markdown（标题、正文、代码块分得清清楚楚），所以<strong>标题切在这里最适用</strong>—— 这是 "因地制宜" 的选择，不是唯一答案。</p>
-<h3 id="_3">代码怎么切</h3>
+<h3 id="_4">代码怎么切</h3>
 <p><strong>先判标题</strong>：</p>
 <pre><code>def _is_head(s: str) -&gt; bool:
     if s.startswith(&quot;【&quot;) and s.endswith(&quot;】&quot;):   # 手册原生标题：【xxx】
@@ -348,7 +353,7 @@ elif args.ask:      # --ask &quot;问题&quot;：提问
 <p>SQLite 不是 "不能存向量"，而是<strong>没给检索建索引</strong>—— 检索时要全表扫描，把向量一条条取出来算余弦。数据量小时这缺点完全不是事，数据量大了才变成瓶颈。</p>
 <p>"小数据" 是多大？SQLite 官方定位是<strong>嵌入式、单机数据库</strong>：单表几百万行、单机低并发读写毫无压力，个人知识库（几千到几万块）对它来说是小菜一碟。但向量检索是另一回事——<strong>全表扫描算相似度</strong>：几千块秒回，几十万条就开始卡。所以量级到 "生产级"（百万级数据、毫秒响应、高并发）才换向量数据库。原理上两者一样，区别在 "谁来做检索"（见下）。</p>
 </blockquote>
-<h3 id="_4">存什么、怎么存</h3>
+<h3 id="_5">存什么、怎么存</h3>
 <p><strong>存三样</strong>：块的正文（给模型看）、块的向量（给检索用）、块的指纹（给去重用）。</p>
 <pre><code>con = sqlite3.connect(DB)                       # 连数据库（没有就建文件）
 con.execute(&quot;CREATE TABLE IF NOT EXISTS chunks(...)&quot;)
@@ -372,7 +377,7 @@ con.close()
 <p><code>?</code><strong>? 占位符</strong>：SQL 里的 <code>?</code> 是 "这里放一个值"，真正的值由第二个参数元组提供。这是防注入的标准写法，<strong>永远不要把变量直接拼进 SQL 字符串</strong>（拼接会出 SQL 注入漏洞，新手必踩）</p>
 </li>
 </ul>
-<h3 id="_5">真实世界用什么：向量数据库</h3>
+<h3 id="_6">真实世界用什么：向量数据库</h3>
 <p>生产里的检索<strong>不在你的 Python 代码里做</strong>，而在<strong>向量数据库内部完成</strong>：</p>
 <pre><code>原理版（本工程）：
   你的代码遍历库里所有向量 → 逐个算余弦 → 自己排序 → 取前 3
@@ -383,7 +388,7 @@ con.close()
 </code></pre>
 <p>差别在哪？原理版把 "遍历 + 排序" 摊在你的 Python 循环里；向量数据库把这步<strong>下沉到数据库内部</strong>（建了向量索引，不用全表扫描，几十万条也能毫秒级返回）。但原理是同一个：<strong>拿问题向量和每条数据算相似度，按相似度从高到低排，取前 k</strong>。看懂原理版的遍历，就懂了向量数据库在干嘛。</p>
 <h2 id="6-search">6. 第四步：检索（search）</h2>
-<h3 id="_6">余弦相似度的数学</h3>
+<h3 id="_7">余弦相似度的数学</h3>
 <p>两个向量的 "像不像" 用<strong>方向夹角</strong>衡量：夹角越小越像。余弦相似度 = 点积 ÷ (模长 × 模长)，范围 -1 到 1。</p>
 <pre><code>def _cosine(v1: list[float], v2: list[float]) -&gt; float:
     dot = sum(x * y for x, y in zip(v1, v2))   # 点积：对应位相乘再求和
@@ -483,6 +488,6 @@ print(&quot;答案：&quot;, reply[&quot;choices&quot;][0][&quot;message&quot;][
 <h2 id="license">License</h2>
 <p><strong>AGPLv3</strong> —— 允许商用，但你必须告知使用者源码可免费获取；修改或再分发（含部署为网络服务）后，修改版同样必须以 AGPLv3 开源。模型文件与文档内容版权归各自来源。</p>
 <p>全文见 <a href="LICENSE">LICENSE</a>。</p>
-<div class="footer-note">RAG 手写全链路 · README · 版本 v1.0 · 生成于 2026-10-05（RAG-Minimal / RAG_HandProj 双仓库开源，AGPLv3）</div>
+<div class="footer-note">RAG 手写全链路 · README · 版本 v1.0 · 生成于 2026-10-06（RAG-Minimal / RAG_HandProj 双仓库开源，AGPLv3）</div>
 </body>
 </html>
